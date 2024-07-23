@@ -166,10 +166,14 @@ def pad_list(list, k, v):
     return list + [v] * padding
 
 
-def precompute_indices_and_offsets(block_size, slot_mapping):
+def precompute_indices_and_offsets(block_size, slot_mapping, is_prompt):
     slot_mapping = slot_mapping.flatten()
     indices = torch.div(slot_mapping, block_size, rounding_mode="floor")
-    offsets = torch.fmod(slot_mapping, block_size)
+    if is_prompt:
+        indices = indices.unflatten(0, (-1, block_size))[:, 0]
+        offsets = None
+    else:
+        offsets = torch.fmod(slot_mapping, block_size)
     return indices, offsets
 
 
@@ -729,7 +733,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                                        device=self.device)
 
         block_indices, block_offsets = precompute_indices_and_offsets(
-            self.block_size, slot_mapping)
+            self.block_size, slot_mapping, True)
 
         attn_metadata = self.attn_backend.make_metadata(
             is_prompt=True,
@@ -855,7 +859,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                                     device=self.device)
 
         block_indices, block_offsets = precompute_indices_and_offsets(
-            self.block_size, slot_mapping)
+            self.block_size, slot_mapping, False)
 
         attn_metadata = self.attn_backend.make_metadata(
             is_prompt=False,
