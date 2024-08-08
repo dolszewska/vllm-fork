@@ -1437,7 +1437,7 @@ class HabanaModelRunner(
             logits_ids_list = []
             logits_tensor = None
             logits_tensor_list = []
-            for seq_group_metadata in seq_group_metadata_list:
+            for seq_group_metadata in model_input:
                 assert len(seq_group_metadata.seq_data) == 1
                 for seq_data in seq_group_metadata.seq_data.values():
                     if seq_data.prev_logits is not None:
@@ -1526,7 +1526,7 @@ class HabanaModelRunner(
                                                sampling_metadata)
 
         if self.scheduler_config.enable_delayed_sampling:
-            for idx, seq_group_metadata in enumerate(seq_group_metadata_list):
+            for idx, seq_group_metadata in enumerate(model_input):
                 assert len(seq_group_metadata.seq_data) == 1
                 for seq_data in seq_group_metadata.seq_data.values():
                     seq_data.prev_logits = logits
@@ -1538,16 +1538,17 @@ class HabanaModelRunner(
             return []
 
         # Sample the next token.
-        with self.profiler.record_event(
-                'internal', ('sample_'
-                             f'{"prompt" if is_prompt else "decode"}_'
-                             f'bs{batch_size}_'
-                             f'seq{seq_len}')):
-            output = self.model.sample(
-                logits=logits,
-                sampling_metadata=sampling_metadata,
-            )
-        output.outputs = output.outputs[:real_batch_size]
+        if not self.scheduler_config.enable_delayed_sampling:
+            with self.profiler.record_event(
+                    'internal', ('sample_'
+                                f'{"prompt" if is_prompt else "decode"}_'
+                                f'bs{batch_size}_'
+                                f'seq{seq_len}')):
+                output = self.model.sample(
+                    logits=logits,
+                    sampling_metadata=sampling_metadata,
+                )
+            output.outputs = output.outputs[:real_batch_size]
         htorch.core.mark_step()
 
         if self.is_driver_worker and self.profiler.enabled:
