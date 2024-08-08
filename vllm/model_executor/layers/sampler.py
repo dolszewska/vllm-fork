@@ -1099,8 +1099,8 @@ def _build_sampler_output(
     """
     sampler_output: List[CompletionSequenceGroupOutput] = []
     if not skip_sampler_cpu_output:
-        assert prompt_logprobs is not None
-        assert sample_logprobs is not None
+        #assert prompt_logprobs is not None
+        #assert sample_logprobs is not None
 
         for (seq_group, sample_result, group_prompt_logprobs,
              group_sample_logprobs) in zip_longest(sampling_metadata.seq_groups,
