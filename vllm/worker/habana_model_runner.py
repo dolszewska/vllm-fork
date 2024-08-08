@@ -1437,7 +1437,7 @@ class HabanaModelRunner(
             logits_ids_list = []
             logits_tensor = None
             logits_tensor_list = []
-            for seq_group_metadata in model_input:
+            for seq_group_metadata in sampling_metadata.seq_groups:
                 assert len(seq_group_metadata.seq_data) == 1
                 for seq_data in seq_group_metadata.seq_data.values():
                     if seq_data.prev_logits is not None:
@@ -1526,7 +1526,7 @@ class HabanaModelRunner(
                                                sampling_metadata)
 
         if self.scheduler_config.enable_delayed_sampling:
-            for idx, seq_group_metadata in enumerate(model_input):
+            for idx, seq_group_metadata in enumerate(sampling_metadata.seq_groups):
                 assert len(seq_group_metadata.seq_data) == 1
                 for seq_data in seq_group_metadata.seq_data.values():
                     seq_data.prev_logits = logits
