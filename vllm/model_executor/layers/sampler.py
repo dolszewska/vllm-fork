@@ -154,8 +154,8 @@ class Sampler(nn.Module):
             on_device_tensors = None
 
         # Get the logprobs query results.
-        prompt_logprobs = None
-        sample_logprobs = None
+        prompt_logprobs = []
+        sample_logprobs = []
         
         # Check if logprobs are required
         get_logprobs = False
