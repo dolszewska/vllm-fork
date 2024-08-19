@@ -57,7 +57,7 @@ class HabanaAttentionBackend(AttentionBackend):
         HabanaPagedAttention.copy_blocks(kv_caches, src_to_dists)
 
 
-@dataclass(frozen=True)
+@dataclass
 class HabanaAttentionMetadata(HabanaPagedAttentionMetadata, AttentionMetadata):
     """Metadata for HabanaAttentionbackend."""
     # Currently, input sequences can only contain all prompts
@@ -193,13 +193,12 @@ class HabanaAttentionImpl(AttentionImpl, torch.nn.Module):
                 if self.alibi_slopes is not None and \
                     self.position_bias is not None:
                     attn_bias.add_(self.position_bias[:, :,
-                                                        -attn_bias.size(2):,
-                                                        -attn_bias.size(3):])
+                                                      -attn_bias.size(2):,
+                                                      -attn_bias.size(3):])
             else:
                 attn_bias = None
 
-            query_shape = (batch_size, seq_len, self.num_heads,
-                        self.head_size)
+            query_shape = (batch_size, seq_len, self.num_heads, self.head_size)
             kv_shape = (batch_size, seq_len_kv, self.num_kv_heads,
                         self.head_size)
             out = ops.prompt_attention(
