@@ -57,7 +57,7 @@ class HabanaAttentionBackend(AttentionBackend):
         HabanaPagedAttention.copy_blocks(kv_caches, src_to_dists)
 
 
-@dataclass(frozen=True)
+@dataclass
 class HabanaAttentionMetadata(HabanaPagedAttentionMetadata, AttentionMetadata):
     """Metadata for HabanaAttentionbackend."""
     # Currently, input sequences can only contain all prompts
@@ -190,12 +190,10 @@ class HabanaAttentionImpl(AttentionImpl, torch.nn.Module):
             attn_bias = attn_metadata.attn_bias
             if self.alibi_slopes is not None and \
                 self.position_bias is not None:
-                attn_bias.add_(self.position_bias[:, :,
-                                                    -attn_bias.size(2):,
-                                                    -attn_bias.size(3):])
+                attn_bias.add_(self.position_bias[:, :, -attn_bias.size(2):,
+                                                  -attn_bias.size(3):])
 
-            query_shape = (batch_size, seq_len, self.num_heads,
-                        self.head_size)
+            query_shape = (batch_size, seq_len, self.num_heads, self.head_size)
             kv_shape = (batch_size, seq_len_kv, self.num_kv_heads,
                         self.head_size)
             out = ops.prompt_attention(
@@ -213,9 +211,16 @@ class HabanaAttentionImpl(AttentionImpl, torch.nn.Module):
         else:
             # Decoding run.
             output = HabanaPagedAttention.forward_decode(
-                query=query, key_cache=key_cache, value_cache=value_cache, block_list=attn_metadata.block_list,
-                block_mapping=attn_metadata.block_mapping, block_bias=attn_metadata.attn_bias, scale=self.scale,
-                matmul_qk_op=self.matmul_qk, matmul_av_op=self.matmul_av, keys_fetch_func=self.k_cache.fetch_from_cache,
+                query=query,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                block_list=attn_metadata.block_list,
+                block_mapping=attn_metadata.block_mapping,
+                block_bias=attn_metadata.attn_bias,
+                scale=self.scale,
+                matmul_qk_op=self.matmul_qk,
+                matmul_av_op=self.matmul_av,
+                keys_fetch_func=self.k_cache.fetch_from_cache,
                 values_fetch_func=self.v_cache.fetch_from_cache)
         # Reshape the output tensor.
         return output.view(batch_size, seq_len, hidden_size)
