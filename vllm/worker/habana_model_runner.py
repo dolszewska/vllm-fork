@@ -786,10 +786,10 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             assert seq_group_metadata.token_chunk_size == 1
 
             seq_ids = list(seq_group_metadata.seq_data.keys())
-            #lora_id = seq_group_metadata.lora_int_id
+            lora_id = seq_group_metadata.lora_int_id
 
-            #if lora_id > 0:
-            #    lora_requests.add(seq_group_metadata.lora_request)
+            if lora_id > 0:
+                lora_requests.add(seq_group_metadata.lora_request)
 
             for seq_id in seq_ids:
                 seq_data = seq_group_metadata.seq_data[seq_id]
@@ -809,8 +809,8 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                 block_offset = position % self.block_size
                 slot = block_number * self.block_size + block_offset
                 slot_mapping.append([slot])
-                #lora_index_mapping.append(lora_id)
-                #lora_prompt_mapping.append(lora_id)
+                lora_index_mapping.append(lora_id)
+                lora_prompt_mapping.append(lora_id)
 
                 if self.sliding_window is not None:
                     sliding_window_blocks = (self.sliding_window //
