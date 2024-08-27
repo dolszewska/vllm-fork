@@ -13,7 +13,7 @@ from vllm.hpu import cache_ops, ops
 _PARTITION_SIZE = 512
 
 
-@dataclass
+@dataclass(frozen=True)
 class HabanaPagedAttentionMetadata:
     """Metadata for PagedAttention."""
     block_list: Optional[torch.Tensor]

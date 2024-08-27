@@ -10,6 +10,7 @@ import math
 import operator
 import os
 import time
+import sys
 from enum import IntEnum
 from typing import (TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple,
                     Optional, Set, Tuple, Type, TypeVar, Union)
@@ -52,19 +53,13 @@ _PAD_SLOT_ID = 0
 LORA_WARMUP_RANK = 8
 
 
-def subtuple(obj: object,
-             typename: str,
-             to_copy: List[str],
-             to_override: Optional[Dict[str, object]] = None):
+def subtuple(obj: object, typename: str, to_copy: List[str], to_override: Dict[str, object] = {}):
     if obj is None:
         return None
-    if to_override is None:
-        to_override = {}
     fields = set(to_copy) | set(to_override.keys())
     values = {f: to_override.get(f, getattr(obj, f)) for f in fields}
     if typename not in _TYPE_CACHE:
-        _TYPE_CACHE[typename] = collections.namedtuple(typename,
-                                                       ' '.join(fields))
+        _TYPE_CACHE[typename] = collections.namedtuple(typename, ' '.join(fields))
     return _TYPE_CACHE[typename](**values)
 
 
@@ -78,12 +73,10 @@ def read_bucket_settings(phase: str, dim: str, **defaults):
     """
     params = ['min', 'step', 'max']
     env_vars = [f'VLLM_{phase}_{dim}_BUCKET_{p}'.upper() for p in params]
-    default_values = [defaults[p] for p in params]
-    values = [
-        int(os.environ.get(e, d)) for e, d in zip(env_vars, default_values)
-    ]
+    defaults = [defaults[p] for p in params]
+    values = [int(os.environ.get(e, d)) for e, d in zip(env_vars, defaults)]
     for e, v, d in zip(env_vars, values, defaults):
-        logger.info('%s=%s (default:%s)', e, v, d)
+        logger.info(f'{e}={v} (default:{d})')
     return values
 
 
@@ -113,13 +106,11 @@ def warmup_range(config: Tuple[int, int, int]):
 
 
 def generate_prompt_buckets(bs_bucket_config, seq_bucket_config):
-    buckets = itertools.product(warmup_range(bs_bucket_config),
-                                warmup_range(seq_bucket_config))
+    buckets = itertools.product(warmup_range(bs_bucket_config), warmup_range(seq_bucket_config))
     return list(sorted(buckets, key=lambda b: (b[0] * b[1], b[1], b[0])))
 
 
-def generate_decode_buckets(bs_bucket_config, blocks_bucket_config,
-                            max_blocks):
+def generate_decode_buckets(bs_bucket_config, blocks_bucket_config, max_blocks):
     buckets = []
     for bs in warmup_range(bs_bucket_config):
         for blocks in warmup_range(blocks_bucket_config):
@@ -160,10 +151,10 @@ def align_workers(value, op):
     return value_t.item()
 
 
-def pad_list(list, k, v):
-    target_len = round_up(len(list), k)
-    padding = target_len - len(list)
-    return list + [v] * padding
+def pad_list(l, k, v):
+    target_len = round_up(len(l), k)
+    padding = target_len - len(l)
+    return l + [v] * padding
 
 
 class HpuModelAdapter():
@@ -194,35 +185,27 @@ class HpuModelAdapter():
                                             dtype=torch.bool),
                                  diagonal=1)
         mask = causal_mask.logical_or(len_mask)
-        attn_bias = (torch.zeros_like(mask, dtype=dtype).masked_fill_(
-            mask, -math.inf))
+        attn_bias = (torch.zeros_like(mask, dtype=dtype)
+                        .masked_fill_(mask, -math.inf))
         attn_metadata = prefill_metadata._replace(attn_bias=attn_bias)
         return attn_metadata
 
     def _set_block_mapping(self, metadata, batch_size, device, dtype):
-        mask = torch.arange(0,
-                            self.block_size,
-                            device=device,
-                            dtype=torch.int32).unsqueeze(0)
+        mask = torch.arange(0, self.block_size, device=device, dtype=torch.int32).unsqueeze(0)
         mask = mask >= metadata.block_usage.unsqueeze(-1)
-        attn_bias = (torch.zeros_like(mask, dtype=dtype).masked_fill_(
-            mask, -math.inf))
-        block_mapping = torch.nn.functional.one_hot(
-            metadata.block_mapping, num_classes=batch_size).to(dtype)
-        metadata = metadata._replace(block_mapping=block_mapping,
-                                     attn_bias=attn_bias)
+        attn_bias = (torch.zeros_like(mask, dtype=dtype)
+                        .masked_fill_(mask, -math.inf))
+        block_mapping = torch.nn.functional.one_hot(metadata.block_mapping, num_classes=batch_size).to(dtype)
+        metadata = metadata._replace(block_mapping=block_mapping, attn_bias=attn_bias)
         return metadata
 
-    def _update_metadata(self, attn_metadata, batch_size, seq_len, device,
-                         dtype):
+    def _update_metadata(self, attn_metadata, batch_size, seq_len, device, dtype):
         if attn_metadata.is_prompt:
-            meta = attn_metadata
-            attn_metadata = self._set_attn_bias(meta, batch_size, seq_len,
-                                                device, dtype)
+            meta=attn_metadata
+            attn_metadata=self._set_attn_bias(meta, batch_size, seq_len, device, dtype)
         else:
-            meta = attn_metadata
-            attn_metadata = self._set_block_mapping(meta, batch_size, device,
-                                                    dtype)
+            meta=attn_metadata
+            attn_metadata=self._set_block_mapping(meta, batch_size, device, dtype)
         return attn_metadata
 
     def forward(self, *args, **kwargs):
@@ -231,9 +214,11 @@ class HpuModelAdapter():
         if 'warmup_mode' in kwargs:
             kwargs.pop('warmup_mode')
         input_ids = kwargs['input_ids']
-        kwargs['attn_metadata'] = self._update_metadata(
-            kwargs['attn_metadata'], input_ids.size(0), input_ids.size(1),
-            input_ids.device, torch.bfloat16)
+        kwargs['attn_metadata'] = self._update_metadata(kwargs['attn_metadata'],
+                                                      input_ids.size(0),
+                                                      input_ids.size(1),
+                                                      input_ids.device,
+                                                      torch.bfloat16)
         hidden_states = self.model(*args, **kwargs)
         hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
         hidden_states = hidden_states.index_select(0, selected_token_indices)
@@ -517,10 +502,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             # RuntimeErrors. This needs to be debugged
             with HabanaMemoryProfiler() as m_wrap:
                 self.model = _maybe_wrap_in_hpu_graph(
-                    self.model,
-                    self.block_size,
-                    enforce_eager=self.enforce_eager,
-                    disable_tensor_cache=True)
+                    self.model, self.block_size, enforce_eager=self.enforce_eager)
             msg = f"Wrapping in HPU Graph took {m_wrap.get_summary_string()}"
             logger.info(msg)
 
@@ -545,12 +527,11 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         blocks_step = 128
         max_prompt_seq = 1024
         max_decode_seq = 2048
-        self.prompt_bs_bucket_cfg = read_bucket_settings(
-            'prompt',
-            'bs',
-            min=1,
-            step=align_bs(32),
-            max=align_bs(max_bucket_cfg))
+        self.prompt_bs_bucket_cfg = read_bucket_settings('prompt',
+                                                         'bs',
+                                                         min=1,
+                                                         step=align_bs(32),
+                                                         max=align_bs(max_bucket_cfg))
         self.decode_bs_bucket_cfg = read_bucket_settings('decode',
                                                          'bs',
                                                          min=align_bs(32),
@@ -561,13 +542,11 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                                                           min=self.block_size,
                                                           step=self.block_size,
                                                           max=max_prompt_seq)
-        self.decode_block_bucket_cfg = read_bucket_settings(
-            'decode',
-            'block',
-            min=blocks_step,
-            step=blocks_step,
-            max=max(blocks_step,
-                    self.max_num_seqs * max_decode_seq // self.block_size))
+        self.decode_block_bucket_cfg = read_bucket_settings('decode',
+                                                          'block',
+                                                          min=blocks_step,
+                                                          step=blocks_step,
+                                                          max=max(blocks_step, self.max_num_seqs * max_decode_seq // self.block_size))
         self.graphed_buckets: Set[Any] = set()
 
         msg = ("Prompt bucket config (min, step, max_warmup) "
@@ -579,6 +558,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                f"bs:{self.decode_bs_bucket_cfg}, "
                f"seq:{self.decode_block_bucket_cfg}")
         logger.info(msg)
+
 
     def _prepare_prompt(
         self,
@@ -823,40 +803,27 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                                     dtype=torch.long,
                                     device=self.device).unsqueeze(-1)
         input_positions = torch.tensor(input_positions,
-                                       dtype=torch.long,
-                                       device=self.device)
+                                    dtype=torch.long,
+                                    device=self.device)
         num_decode_tokens = sum(seq_lens)
 
         blocks_used = [len(bt) for bt in block_tables]
         block_list = list(itertools.chain(*block_tables))
-        block_mapping_nested: List[List[int]] = [
-            [i] * b_u for i, b_u in enumerate(blocks_used)
-        ]
-        block_mapping: List[int] = list(
-            itertools.chain.from_iterable(block_mapping_nested))
+        block_mapping = [[i] * bu for i, bu in enumerate(blocks_used)]
+        block_mapping = list(itertools.chain(*block_mapping))
 
-        last_block = [
-            sl % self.block_size + 1 for sl in itertools.chain(*slot_mapping)
-        ]
-        block_usage = [[self.block_size] * (b_u - 1) + [lb]
-                       for b_u, lb in zip(blocks_used, last_block)]
+        last_block = [sl % self.block_size + 1 for sl in itertools.chain(*slot_mapping)]
+        block_usage = [[self.block_size] * (bu - 1) + [lb] for bu, lb in zip(blocks_used, last_block)]
         block_usage = list(itertools.chain(*block_usage))
 
-        block_bucket_size = find_bucket(len(block_list),
-                                        self.decode_block_bucket_cfg)
+        block_bucket_size = find_bucket(len(block_list), self.decode_block_bucket_cfg)
         block_list = pad_list(block_list, block_bucket_size, _PAD_SLOT_ID)
         block_mapping = pad_list(block_mapping, block_bucket_size, 0)
         block_usage = pad_list(block_usage, block_bucket_size, 0)
 
-        block_list = torch.tensor(block_list,
-                                  dtype=torch.int,
-                                  device=self.device)
-        block_mapping = torch.tensor(block_mapping,
-                                     dtype=torch.int,
-                                     device=self.device)
-        block_usage = torch.tensor(block_usage,
-                                   dtype=torch.bfloat16,
-                                   device=self.device)
+        block_list = torch.tensor(block_list, dtype=torch.int, device=self.device)
+        block_mapping = torch.tensor(block_mapping, dtype=torch.int, device=self.device)
+        block_usage = torch.tensor(block_usage, dtype=torch.bfloat16, device=self.device)
 
         slot_mapping = torch.tensor(slot_mapping,
                                     dtype=torch.long,
@@ -1065,8 +1032,8 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         # input_hash(123) != input_hash(321)
         # input_hash("abc") != input_hash("cba")
         attention_metadata = subtuple(metadata, 'TrimmedAttentionMetadata', [
-            'attn_bias', 'seq_lens_tensor', 'block_list', 'block_mapping',
-            'block_usage', 'slot_mapping', 'is_prompt'
+            'attn_bias', 'seq_lens_tensor', 'block_list', 'block_mapping', 'block_usage', 'slot_mapping',
+            'is_prompt'
         ])
         return attention_metadata
 
@@ -1168,15 +1135,9 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             # FIXME: seq_len is actually number of blocks
             blocks = [seq_len // batch_size for _ in range(batch_size)]
             blocks[0] += seq_len % batch_size
-            seqs = [
-                self.create_dummy_seq_group_metadata(
-                    i,
-                    b * self.block_size - 1,
-                    is_prompt,
+            seqs = [self.create_dummy_seq_group_metadata(i, b * self.block_size - 1, is_prompt,
                     lora_request=dummy_lora_requests_per_seq[i]
-                    if dummy_lora_requests_per_seq else None)
-                for i, b in enumerate(blocks)
-            ]
+                    if dummy_lora_requests_per_seq else None) for i, b in enumerate(blocks)]
         torch.hpu.synchronize()
         for _ in range(times):
             inputs = self.prepare_model_input(seqs)
@@ -1296,28 +1257,21 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         self.profiler.start('internal', 'warmup')
         max_blocks = kv_caches[0][0].size(0)
 
-        self.prompt_buckets = generate_prompt_buckets(
-            self.prompt_bs_bucket_cfg, self.prompt_seq_bucket_cfg)
+        self.prompt_buckets = generate_prompt_buckets(self.prompt_bs_bucket_cfg, self.prompt_seq_bucket_cfg)
         if self.lora_config:
             self.prompt_buckets[:] = [
                 bucket for bucket in self.prompt_buckets
                 if self._is_valid_bucket(bucket)
             ]
-        logger.info("Generated %d prompt buckets: %s",
-                    len(self.prompt_buckets),
-                    list(sorted(self.prompt_buckets)))
+        logger.info(f"Generated {len(self.prompt_buckets)} prompt buckets: {list(sorted(self.prompt_buckets))}")
 
-        self.decode_buckets = generate_decode_buckets(
-            self.decode_bs_bucket_cfg, self.decode_block_bucket_cfg,
-            max_blocks)
+        self.decode_buckets = generate_decode_buckets(self.decode_bs_bucket_cfg, self.decode_block_bucket_cfg, max_blocks)
         if self.lora_config:
             self.decode_buckets[:] = [
                 bucket for bucket in self.decode_buckets
                 if self._is_valid_bucket(bucket)
             ]
-        logger.info("Generated %d decode buckets: %s",
-                    len(self.decode_buckets),
-                    list(sorted(self.decode_buckets)))
+        logger.info(f"Generated {len(self.decode_buckets)} decode buckets: {list(sorted(self.decode_buckets))}")
 
         start_mem = HabanaMemoryProfiler.current_device_memory_usage()
         start_time = time.perf_counter()

@@ -4,6 +4,7 @@
 # This source code is licensed under the BSD license found in the
 # LICENSE file in the root directory of this source tree.
 ###############################################################################
+import os
 from typing import Optional
 
 import habana_frameworks.torch as htorch
@@ -50,8 +51,16 @@ def block_softmax(batch_size, attn, block_mapping):
     return attn
 
 
-def flat_pa(query, key_cache, value_cache, block_list, block_mapping,
-            block_bias, scale, matmul_qk_op, matmul_av_op, keys_fetch_func,
+def flat_pa(query,
+            key_cache,
+            value_cache,
+            block_list,
+            block_mapping,
+            block_bias,
+            scale,
+            matmul_qk_op,
+            matmul_av_op,
+            keys_fetch_func,
             values_fetch_func):
     batch_size = query.size(0)
     q_heads = query.size(1)
