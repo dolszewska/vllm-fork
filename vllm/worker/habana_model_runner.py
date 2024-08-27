@@ -519,7 +519,8 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                 self.model = _maybe_wrap_in_hpu_graph(
                     self.model,
                     self.block_size,
-                    enforce_eager=self.enforce_eager)
+                    enforce_eager=self.enforce_eager,
+                    disable_tensor_cache=True)
             msg = f"Wrapping in HPU Graph took {m_wrap.get_summary_string()}"
             logger.info(msg)
 
