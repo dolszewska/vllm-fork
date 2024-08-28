@@ -978,6 +978,8 @@ class HabanaModelRunner:
             "kv_caches": kv_caches,
             "attn_metadata": self.trim_attn_metadata(attn_metadata),
         }
+        input_hash=htorch.hpu.graphs.input_hash(execute_model_kwargs)
+        print(input_hash)
         if self.vision_language_config:
             execute_model_kwargs.update({"image_input": multi_modal_input})
         if htorch.utils.internal.is_lazy():
