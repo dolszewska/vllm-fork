@@ -1533,6 +1533,8 @@ class HabanaModelRunner(
             "attn_metadata": self.trim_attn_metadata(attn_metadata),
             "intermediate_tensors": intermediate_tensors
         }
+        input_hash= htorch.hpu.graphs.input_hash(execute_model_kwargs)
+        print(input_hash)
         if multi_modal_input is not None:
             execute_model_kwargs.update(multi_modal_input)
         if htorch.utils.internal.is_lazy():
