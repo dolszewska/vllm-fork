@@ -1585,7 +1585,7 @@ class HabanaModelRunner(
         assert is_prompt is not None
         batch_size = input_tokens.size(0)
         seq_len = self._seq_len(attn_metadata)
-        if not is_prompt and self.is_driver_worker:
+        if not is_prompt:
             free_mem = format_bytes(
             HabanaMemoryProfiler.current_free_device_memory())
             print("Free memory", free_mem)
@@ -1601,12 +1601,6 @@ class HabanaModelRunner(
             "attn_metadata": self.trim_attn_metadata(attn_metadata),
             "intermediate_tensors": intermediate_tensors
         }
-<<<<<<< HEAD
-        if self.is_driver_worker:
-            input_hash=htorch.hpu.graphs.input_hash(execute_model_kwargs)
-            print(input_hash)
-=======
->>>>>>> parent of 18c11259 (print input hash)
         if multi_modal_input is not None:
             execute_model_kwargs.update(multi_modal_input)
         if htorch.utils.internal.is_lazy():
