@@ -1592,7 +1592,8 @@ class HabanaModelRunner(
         print("Free memory", free_mem)
         print("Batch size", batch_size)
         print("Seq length", seq_len)
-        print("Block list num", attn_metadata.block_list.numel())
+        if not is_prompt:
+            print("Block list num", attn_metadata.block_list.numel())
 
         use_graphs = self._use_graphs(batch_size, seq_len, is_prompt)
         execute_model_kwargs = {
