@@ -1585,6 +1585,14 @@ class HabanaModelRunner(
         assert is_prompt is not None
         batch_size = input_tokens.size(0)
         seq_len = self._seq_len(attn_metadata)
+        if not is_prompt and self.is_driver_worker:
+            free_mem = format_bytes(
+            HabanaMemoryProfiler.current_free_device_memory())
+            print("Free memory", free_mem)
+            print("Batch size", batch_size)
+            print("Seq length", seq_len)
+            print("Block list num", attn_metadata.block_list.numel())
+
         use_graphs = self._use_graphs(batch_size, seq_len, is_prompt)
         execute_model_kwargs = {
             "input_ids": input_tokens,
@@ -1593,8 +1601,9 @@ class HabanaModelRunner(
             "attn_metadata": self.trim_attn_metadata(attn_metadata),
             "intermediate_tensors": intermediate_tensors
         }
-        input_hash= htorch.hpu.graphs.input_hash(execute_model_kwargs)
-        print(input_hash)
+        if self.is_driver_worker:
+            input_hash=htorch.hpu.graphs.input_hash(execute_model_kwargs)
+            print(input_hash)
         if multi_modal_input is not None:
             execute_model_kwargs.update(multi_modal_input)
         if htorch.utils.internal.is_lazy():
