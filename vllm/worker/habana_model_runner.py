@@ -458,6 +458,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         self._setup_buckets()
         if self.is_driver_worker:
             os.environ["GRAPH_VISUALIZATION"] = 1
+            os.environ["PT_HPU_GRAPH_DUMP_PREFIX"] = "/software/users/dolszewska/graph_dumps/" 
 
     def load_model(self) -> None:
         import habana_frameworks.torch.core as htcore
