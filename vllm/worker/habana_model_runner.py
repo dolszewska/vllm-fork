@@ -456,6 +456,8 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         self.profiler_counter_helper = HabanaProfilerCounterHelper()
         self._mem_margin: Optional[int] = None
         self._setup_buckets()
+        if self.is_driver_worker:
+            os.environ["GRAPH_VISUALIZATION"] = 1
 
     def load_model(self) -> None:
         import habana_frameworks.torch.core as htcore
