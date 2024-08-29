@@ -978,8 +978,14 @@ class HabanaModelRunner:
             "kv_caches": kv_caches,
             "attn_metadata": self.trim_attn_metadata(attn_metadata),
         }
-        input_hash=htorch.hpu.graphs.input_hash(execute_model_kwargs)
-        print(input_hash)
+        if not is_prompt:
+            free_mem = format_bytes(
+            HabanaMemoryProfiler.current_free_device_memory())
+            print("Free memory", free_mem)
+            print("Batch size", batch_size)
+            print("Seq length", seq_len)
+            print("Block list num", attn_metadata.block_list.numel())
+
         if self.vision_language_config:
             execute_model_kwargs.update({"image_input": multi_modal_input})
         if htorch.utils.internal.is_lazy():
