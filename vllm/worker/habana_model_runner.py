@@ -456,9 +456,6 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         self.profiler_counter_helper = HabanaProfilerCounterHelper()
         self._mem_margin: Optional[int] = None
         self._setup_buckets()
-        if self.is_driver_worker:
-            os.environ["GRAPH_VISUALIZATION"] = 1
-            os.environ["PT_HPU_GRAPH_DUMP_PREFIX"] = "/software/users/dolszewska/graph_dumps/" 
 
     def load_model(self) -> None:
         import habana_frameworks.torch.core as htcore
@@ -1590,6 +1587,7 @@ class HabanaModelRunner(
         seq_len = self._seq_len(attn_metadata)
         free_mem = format_bytes(
         HabanaMemoryProfiler.current_free_device_memory())
+        print("Is prompt", is_prompt)
         print("Free memory", free_mem)
         print("Batch size", batch_size)
         print("Seq length", seq_len)
