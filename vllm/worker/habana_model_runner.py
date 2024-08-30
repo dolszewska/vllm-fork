@@ -1587,18 +1587,37 @@ class HabanaModelRunner(
         seq_len = self._seq_len(attn_metadata)
         free_mem = format_bytes(
         HabanaMemoryProfiler.current_free_device_memory())
-
+        trimmed_attn_metadata = self.trim_attn_metadata(attn_metadata)
         use_graphs = self._use_graphs(batch_size, seq_len, is_prompt)
         execute_model_kwargs = {
             "input_ids": input_tokens,
             "positions": input_positions,
             "kv_caches": kv_caches,
-            "attn_metadata": self.trim_attn_metadata(attn_metadata),
+            "attn_metadata": trimmed_attn_metadata,
             "intermediate_tensors": intermediate_tensors
         }
         input_hash=htorch.hpu.graphs.input_hash(execute_model_kwargs)
+        input_hash_metadata=htorch.hpu.graphs.input_hash(trimmed_attn_metadata)
+        input_hash_attn_bias=htorch.hpu.graphs.input_hash(trimmed_attn_metadata.attn_bias)
+        input_hash_seq_lens_tensor=htorch.hpu.graphs.input_hash(trimmed_attn_metadata.seq_lens_tensor)
+        input_hash_block_list=htorch.hpu.graphs.input_hash(trimmed_attn_metadata.block_list)
+        input_hash_block_mapping=htorch.hpu.graphs.input_hash(trimmed_attn_metadata.block_mapping)
+        input_hash_block_usage=htorch.hpu.graphs.input_hash(trimmed_attn_metadata.block_usage)
+        input_hash_slot_mapping=htorch.hpu.graphs.input_hash(trimmed_attn_metadata.slot_mapping)
+        input_hash_input_ids=htorch.hpu.graphs.input_hash(input_tokens)
+        input_hash_positions=htorch.hpu.graphs.input_hash(input_positions)
+        input_hash_kv_caches=htorch.hpu.graphs.input_hash(kv_caches)
+        input_hash_intermediate_tensors=htorch.hpu.graphs.input_hash(intermediate_tensors)
+        
         print()
-        print(f"Is prompt: {is_prompt}, Input hash: {input_hash}, Free memory: {free_mem}, Batch size: {batch_size}, Seq length: {seq_len}", end="")
+        print(
+            f"Is prompt: {is_prompt}, Free memory: {free_mem}, Input hash: {input_hash},\n"
+            f"Trimmed metadata: {input_hash_metadata}, Attn bias: {input_hash_attn_bias}, Seq lens tensor: {input_hash_seq_lens_tensor}\n"
+            f"Block list: {input_hash_block_list}, Block mapping: {input_hash_block_mapping}, Block usage: {input_hash_block_usage}, Slot mapping: {input_hash_slot_mapping}\n"
+            f"Input ids: {input_hash_input_ids}, Positions: {input_hash_positions}, KV caches: {input_hash_kv_caches}, Intermediate tensors: {input_hash_intermediate_tensors}\n"
+            f"Batch size: {batch_size}, Seq length: {seq_len}, Input tokens shape: {input_tokens.shape}",
+            end=""
+        )
         if not is_prompt:
             print(f", Block list num: {attn_metadata.block_list.numel()}")
         else:
