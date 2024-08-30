@@ -457,7 +457,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         self._mem_margin: Optional[int] = None
         self._setup_buckets()
         if self.is_driver_worker:
-            os.environ["GRAPH_VISUALIZATION"] = 1
+            os.environ["GRAPH_VISUALIZATION"] = "1"
             os.environ["PT_HPU_GRAPH_DUMP_PREFIX"] = "/software/users/dolszewska/graph_dumps/" 
 
     def load_model(self) -> None:
