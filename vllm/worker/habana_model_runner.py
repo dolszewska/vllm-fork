@@ -986,12 +986,11 @@ class HabanaModelRunner:
         input_hash_input_ids=htorch.hpu.graphs.input_hash(input_tokens)
         input_hash_positions=htorch.hpu.graphs.input_hash(input_positions)
         input_hash_kv_caches=htorch.hpu.graphs.input_hash(kv_caches)
-        input_hash_intermediate_tensors=htorch.hpu.graphs.input_hash(intermediate_tensors)
 
         print()
         print(
             f"Is prompt: {is_prompt}, Free memory: {free_mem}, Input hash: {input_hash}, Trimmed metadata: {input_hash_metadata}\n"
-            f"Input ids: {input_hash_input_ids}, Positions: {input_hash_positions}, KV caches: {input_hash_kv_caches}, Intermediate tensors: {input_hash_intermediate_tensors}\n"
+            f"Input ids: {input_hash_input_ids}, Positions: {input_hash_positions}, KV caches: {input_hash_kv_caches}\n"
             f"Batch size: {batch_size}, Seq length: {seq_len}, Input tokens shape: {input_tokens.shape}, Input tokens: {input_tokens}",
             end=""
         )
