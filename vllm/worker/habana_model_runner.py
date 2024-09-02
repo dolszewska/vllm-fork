@@ -795,7 +795,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             for seq_id in seq_ids:
                 seq_data = seq_group_metadata.seq_data[seq_id]
                 generation_token = seq_data.get_last_token_id()
-                input_tokens.append([generation_token])
+                input_tokens.append(generation_token)
 
                 seq_len = seq_data.get_len()
                 position = seq_len - 1
@@ -1615,7 +1615,7 @@ class HabanaModelRunner(
             f"Trimmed metadata: {input_hash_metadata}, Attn bias: {input_hash_attn_bias}, Seq lens tensor: {input_hash_seq_lens_tensor}\n"
             f"Block list: {input_hash_block_list}, Block mapping: {input_hash_block_mapping}, Block usage: {input_hash_block_usage}, Slot mapping: {input_hash_slot_mapping}\n"
             f"Input ids: {input_hash_input_ids}, Positions: {input_hash_positions}, KV caches: {input_hash_kv_caches}, Intermediate tensors: {input_hash_intermediate_tensors}\n"
-            f"Batch size: {batch_size}, Seq length: {seq_len}, Input tokens shape: {input_tokens.shape}",
+            f"Batch size: {batch_size}, Seq length: {seq_len}, Input tokens shape: {input_tokens.shape}, Input tokens: {input_tokens}",
             end=""
         )
         if not is_prompt:
