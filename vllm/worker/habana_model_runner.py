@@ -1597,6 +1597,14 @@ class HabanaModelRunner(
             "attn_metadata": trimmed_attn_metadata,
             "intermediate_tensors": intermediate_tensors
         }
+
+        if multi_modal_input is not None:
+            execute_model_kwargs.update(multi_modal_input)
+        if htorch.utils.internal.is_lazy():
+            execute_model_kwargs.update({"bypass_hpu_graphs": not use_graphs})
+
+        htorch.core.mark_step()
+
         input_hash=htorch.hpu.graphs.input_hash(execute_model_kwargs)
         input_hash_metadata=htorch.hpu.graphs.input_hash(trimmed_attn_metadata)
         input_hash_input_ids=htorch.hpu.graphs.input_hash(input_tokens)
@@ -1607,24 +1615,12 @@ class HabanaModelRunner(
         
         print()
         print(
-            f"Is prompt: {is_prompt}, Free memory: {free_mem}, Input hash: {input_hash}, Trimmed metadata: {input_hash_metadata}\n"
+            f"Is prompt: {is_prompt}, Free memory: {free_mem}, Input hash: {input_hash}, Trimmed metadata: {input_hash_metadata}, Input tokens view hash: {input_view_hash_input_ids}\n"
             f"Input ids: {input_hash_input_ids}, Positions: {input_hash_positions}, KV caches: {input_hash_kv_caches}, Intermediate tensors: {input_hash_intermediate_tensors}\n"
-            f"Batch size: {batch_size}, Seq length: {seq_len}, Input tokens shape: {input_tokens.shape}, Input tokens view hash: {input_view_hash_input_ids}, Input tokens dtype: {input_tokens.dtype}",
+            f"Batch size: {batch_size}, Seq length: {seq_len}, Input tokens shape: {input_tokens.shape}, Input tokens dtype: {input_tokens.dtype}",
             end=""
         )
-        if not is_prompt:
-            print(f", Block list num: {attn_metadata.block_list.numel()}")
-        else:
-            print()
-        if multi_modal_input is not None:
-            execute_model_kwargs.update(multi_modal_input)
-        if htorch.utils.internal.is_lazy():
-            execute_model_kwargs.update({
-                "bypass_hpu_graphs": not use_graphs,
-                "warmup_mode": warmup_mode
-            })
-
-        htorch.core.mark_step()
+        print()
         if self.is_driver_worker:
             model_event_name = ("model_"
                                 f"{'prompt' if is_prompt else 'decode'}_"
