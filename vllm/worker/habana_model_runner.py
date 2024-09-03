@@ -997,6 +997,7 @@ class HabanaModelRunner:
             f"Batch size: {batch_size}, Seq length: {seq_len}, Input tokens shape: {input_tokens.shape}, Input tokens: {input_tokens}",
             end=""
         )
+        print()
         if self.vision_language_config:
             execute_model_kwargs.update({"image_input": multi_modal_input})
         if htorch.utils.internal.is_lazy():
