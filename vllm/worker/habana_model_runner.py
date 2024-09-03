@@ -16,6 +16,8 @@ import itertools
 import operator
 import torch
 import habana_frameworks.torch as htorch
+from habana_frameworks.torch import _hpu_C
+
 
 from vllm.attention import (AttentionMetadata, AttentionMetadataPerStage,
                             get_attn_backend)
@@ -984,12 +986,13 @@ class HabanaModelRunner:
         input_hash=htorch.hpu.graphs.input_hash(execute_model_kwargs)
         input_hash_metadata=htorch.hpu.graphs.input_hash(trimmed_attn_metadata)
         input_hash_input_ids=htorch.hpu.graphs.input_hash(input_tokens)
+        input_view_hash_input_ids=_hpu_C.get_view_hash(input_tokens)
         input_hash_positions=htorch.hpu.graphs.input_hash(input_positions)
         input_hash_kv_caches=htorch.hpu.graphs.input_hash(kv_caches)
 
         print()
         print(
-            f"Is prompt: {is_prompt}, Free memory: {free_mem}, Input hash: {input_hash}, Trimmed metadata: {input_hash_metadata}\n"
+            f"Is prompt: {is_prompt}, Free memory: {free_mem}, Input hash: {input_hash}, Trimmed metadata: {input_hash_metadata}, Input tokens view hash: {input_view_hash_input_ids}\n"
             f"Input ids: {input_hash_input_ids}, Positions: {input_hash_positions}, KV caches: {input_hash_kv_caches}\n"
             f"Batch size: {batch_size}, Seq length: {seq_len}, Input tokens shape: {input_tokens.shape}, Input tokens: {input_tokens}",
             end=""
