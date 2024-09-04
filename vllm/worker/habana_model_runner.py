@@ -1621,7 +1621,7 @@ class HabanaModelRunner(
         if not warmup_mode:
             is_memory_drop=is_difference_more_than_10MB(prev_memory, self.free_hpu_memory)
         if is_memory_drop:
-            print(f"There was a memory drop after executing: {self.kwargs_and_hashes}")
+            print(f"There was a memory drop, new memory value {free_mem} after executing: {self.kwargs_and_hashes}")
 
         input_hash=htorch.hpu.graphs.input_hash(execute_model_kwargs)
         input_hash_input_ids=htorch.hpu.graphs.input_hash(input_tokens)
