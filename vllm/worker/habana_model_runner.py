@@ -798,7 +798,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             for seq_id in seq_ids:
                 seq_data = seq_group_metadata.seq_data[seq_id]
                 generation_token = seq_data.get_last_token_id()
-                input_tokens.append(generation_token)
+                input_tokens.append([generation_token])
 
                 seq_len = seq_data.get_len()
                 position = seq_len - 1
@@ -824,7 +824,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
 
         input_tokens = torch.tensor(input_tokens,
                                     dtype=torch.long,
-                                    device=self.device).unsqueeze(-1)
+                                    device=self.device)
         input_positions = torch.tensor(input_positions,
                                        dtype=torch.long,
                                        device=self.device)
@@ -1589,7 +1589,6 @@ class HabanaModelRunner(
         batch_size = input_tokens.size(0)
         seq_len = self._seq_len(attn_metadata)
         use_graphs = self._use_graphs(batch_size, seq_len, is_prompt)
-        input_tokens = input_tokens.contiguous()
         execute_model_kwargs = {
             "input_ids": input_tokens,
             "positions": input_positions,
