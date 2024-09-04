@@ -1589,7 +1589,7 @@ class HabanaModelRunner(
         batch_size = input_tokens.size(0)
         seq_len = self._seq_len(attn_metadata)
         use_graphs = self._use_graphs(batch_size, seq_len, is_prompt)
-        torch.hpu.synchronize()
+        input_tokens = input_tokens.contiguous()
         execute_model_kwargs = {
             "input_ids": input_tokens,
             "positions": input_positions,
