@@ -1184,7 +1184,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         for _ in range(times):
             inputs = self.prepare_model_input(seqs)
             self.execute_model(inputs, kv_caches, warmup_mode=True)
-            torch.hpu.synchronize()
+            #torch.hpu.synchronize()
         gc.collect()
 
     def remove_all_loras(self):
