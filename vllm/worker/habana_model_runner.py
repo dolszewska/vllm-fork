@@ -15,6 +15,8 @@ from typing import (TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple,
                     Optional, Set, Tuple, Type, TypeVar, Union)
 
 import habana_frameworks.torch as htorch
+from habana_frameworks.torch import _hpu_C
+
 import torch
 
 from vllm.attention import AttentionMetadata, get_attn_backend
@@ -31,7 +33,7 @@ from vllm.model_executor.model_loader import get_model
 from vllm.sampling_params import SamplingParams
 from vllm.sequence import (IntermediateTensors, SamplerOutput, SequenceData,
                            SequenceGroupMetadata)
-from vllm.utils import (HabanaMemoryProfiler, format_bytes,
+from vllm.utils import (HabanaMemoryProfiler, format_bytes, is_difference_more_than_10MB,
                         is_pin_memory_available, make_tensor_with_pad)
 from vllm.worker.model_runner_base import (
     ModelRunnerBase, ModelRunnerInputBase,
@@ -451,7 +453,8 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         # Lazy initialization
         self.lora_manager: LRUCacheWorkerLoRAManager = None
         self.model: torch.nn.Module = None
-
+        self.free_hpu_memory = 0
+        self.kwargs_and_hashes = 0
         # Profiler stats
         self.profiler_counter_helper = HabanaProfilerCounterHelper()
         self._mem_margin: Optional[int] = None
@@ -1593,12 +1596,12 @@ class HabanaModelRunner(
             "attn_metadata": self.trim_attn_metadata(attn_metadata),
             "intermediate_tensors": intermediate_tensors
         }
+
         if multi_modal_input is not None:
             execute_model_kwargs.update(multi_modal_input)
         if htorch.utils.internal.is_lazy():
             execute_model_kwargs.update({
-                "bypass_hpu_graphs": not use_graphs,
-                "warmup_mode": warmup_mode
+                "bypass_hpu_graphs": not use_graphs
             })
 
         htorch.core.mark_step()
@@ -1610,6 +1613,24 @@ class HabanaModelRunner(
                                 f"graphs{'T' if use_graphs else 'F'}")
         else:
             model_event_name = 'model_executable'
+
+        prev_memory = self.free_hpu_memory
+        self.free_hpu_memory = HabanaMemoryProfiler.current_free_device_memory()
+        free_mem = format_bytes(self.free_hpu_memory)
+        is_memory_drop = False
+        if not warmup_mode:
+            is_memory_drop=is_difference_more_than_10MB(prev_memory, self.free_hpu_memory)
+        if is_memory_drop:
+            print(f"There was a memory drop after executing: {self.kwargs_and_hashes}")
+
+        input_hash=htorch.hpu.graphs.input_hash(execute_model_kwargs)
+        input_hash_input_ids=htorch.hpu.graphs.input_hash(input_tokens)
+        input_view_hash_input_ids=_hpu_C.get_view_hash(input_tokens)
+
+        self.kwargs_and_hashes = f"Warmup mode: {warmup_mode}, Is prompt: {is_prompt}, Free memory: {free_mem}, Input hash: {input_hash}, Input tokens view hash: {input_view_hash_input_ids}, Input ids: {input_hash_input_ids}, Batch size: {batch_size}, Seq length: {seq_len}\n"
+        print()
+        print(self.kwargs_and_hashes)
+
         with self.profiler.record_event('internal', model_event_name):
             hidden_states = self.model.forward(
                 **execute_model_kwargs,

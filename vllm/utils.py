@@ -705,6 +705,10 @@ def format_bytes(size):
         n += 1
     return f'{size:.4g} {power_labels[n]+"B"}'
 
+def is_difference_more_than_10MB(value1, value2):
+    difference = abs(value1 - value2)
+    ten_MB_in_bytes = 10 * 1024 * 1024  # 10 MB in bytes
+    return difference > ten_MB_in_bytes
 
 def str_to_int_tuple(s: str) -> Tuple[int, ...]:
     """Convert a string to a tuple of integers."""
