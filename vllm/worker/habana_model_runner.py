@@ -1589,6 +1589,7 @@ class HabanaModelRunner(
         batch_size = input_tokens.size(0)
         seq_len = self._seq_len(attn_metadata)
         use_graphs = self._use_graphs(batch_size, seq_len, is_prompt)
+        torch.hpu.synchronize()
         execute_model_kwargs = {
             "input_ids": input_tokens,
             "positions": input_positions,
@@ -1622,7 +1623,7 @@ class HabanaModelRunner(
             is_memory_drop=is_difference_more_than_10MB(prev_memory, self.free_hpu_memory)
         if is_memory_drop:
             print(f"There was a memory drop, new memory value {free_mem} after executing: {self.kwargs_and_hashes}")
-
+        
         input_hash=htorch.hpu.graphs.input_hash(execute_model_kwargs)
         input_hash_input_ids=htorch.hpu.graphs.input_hash(input_tokens)
         input_view_hash_input_ids=_hpu_C.get_view_hash(input_tokens)
