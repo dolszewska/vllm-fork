@@ -73,7 +73,7 @@ def read_bucket_settings(phase: str, dim: str, **defaults):
     """Read bucketing configuration from env variables.
 
     phase is either 'prompt' or 'decode'
-    dim is either 'bs' or 'block'
+    dim is either 'bs', 'seq' or 'block'
     param is either 'min', 'step' or 'max'
     example env variable: VLLM_DECODE_BS_BUCKET_STEP=128
     """
@@ -598,8 +598,8 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             max_bucket_cfg > self.max_num_batched_tokens // self.block_size:
             max_bucket_cfg = self.max_num_batched_tokens // self.block_size
         blocks_step = 128
-        max_prompt_seq = 1024
-        max_decode_seq = 2048
+        max_prompt_seq = self.max_model_len
+        max_decode_seq = self.max_model_len
         self.prompt_bs_bucket_cfg = read_bucket_settings(
             'prompt',
             'bs',
@@ -632,7 +632,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
 
         msg = ("Decode bucket config (min, step, max_warmup) "
                f"bs:{self.decode_bs_bucket_cfg}, "
-               f"seq:{self.decode_block_bucket_cfg}")
+               f"block:{self.decode_block_bucket_cfg}")
         logger.info(msg)
 
     def _prepare_prompt(
@@ -1428,8 +1428,9 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                 if self._is_valid_bucket(bucket)
             ]
 
-        msg = (f"Generated {len(self.prompt_buckets)} "
-               f"prompt buckets: {list(sorted(self.prompt_buckets))}")
+        msg = (
+            f"Generated {len(self.prompt_buckets)} "
+            f"prompt buckets [bs, seq]: {list(sorted(self.prompt_buckets))}")
         logger.info(msg)
 
         msg = (f"Omitted {len(prompt_omitted_buckets)} "
@@ -1448,7 +1449,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                 bucket for bucket in self.decode_buckets
                 if self._is_valid_bucket(bucket)
             ]
-        logger.info("Generated %d decode buckets: %s",
+        logger.info("Generated %d decode buckets [bs, total_blocks]: %s",
                     len(self.decode_buckets),
                     list(sorted(self.decode_buckets)))
 
