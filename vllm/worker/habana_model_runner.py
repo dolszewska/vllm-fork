@@ -1303,7 +1303,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         torch.hpu.synchronize()
         for _ in range(times):
             inputs = self.prepare_model_input(seqs)
-            self.execute_model(inputs, kv_caches, warmup_mode=True)
+            self.execute_model(inputs, kv_caches, warmup_mode=False)
             torch.hpu.synchronize()
         gc.collect()
 
