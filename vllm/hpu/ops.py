@@ -40,13 +40,21 @@ def block2batch(tensor, block_mapping):
 
 
 def block_softmax(batch_size, attn, block_mapping):
-    attn.sub_(10.0)
+    max_val_per_block = attn.max(dim=-1, keepdim=True)[0]
+    max_val_per_block = torch.where(max_val_per_block == -torch.inf, torch.tensor(1.0e-12, device=attn.device), max_val_per_block)
+
+    max_val = block2batch(max_val_per_block, block_mapping)
+    max_val = batch2block(max_val, block_mapping)
+
+    attn.sub_(max_val)
     attn = attn.exp_()
-    sums = attn.sum(dim=-1).unsqueeze(-1)
+
+    sums = attn.sum(dim=-1, keepdim=True)
     sums = block2batch(sums, block_mapping)
     sums = batch2block(sums, block_mapping)
     sums.add_(1.0e-12)
     attn.div_(sums)
+
     return attn
 
 
