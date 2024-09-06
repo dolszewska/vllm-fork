@@ -899,7 +899,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             for seq_id in seq_ids:
                 seq_data = seq_group_metadata.seq_data[seq_id]
                 generation_token = seq_data.get_last_token_id()
-                input_tokens.append(generation_token)
+                input_tokens.append([generation_token])
 
                 seq_len = seq_data.get_len()
                 position = seq_len - 1
@@ -928,7 +928,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             lora_logits_mask = lora_mask
         input_tokens = torch.tensor(input_tokens,
                                     dtype=torch.long,
-                                    device=self.device).unsqueeze(-1)
+                                    device=self.device)
         input_positions = torch.tensor(input_positions,
                                        dtype=torch.long,
                                        device=self.device)
