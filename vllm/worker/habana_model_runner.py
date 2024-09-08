@@ -598,8 +598,9 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             max_bucket_cfg > self.max_num_batched_tokens // self.block_size:
             max_bucket_cfg = self.max_num_batched_tokens // self.block_size
         blocks_step = 128
-        max_prompt_seq = 1024
-        max_decode_seq = 2048
+        max_prompt_seq = self.max_model_len
+        logger.info("Max model length %s", self.max_model_len)
+        max_decode_seq = self.max_model_len
         self.prompt_bs_bucket_cfg = read_bucket_settings(
             'prompt',
             'bs',
@@ -624,6 +625,9 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             max=max(blocks_step,
                     self.max_num_seqs * max_decode_seq // self.block_size))
         self.graphed_buckets: Set[Any] = set()
+
+        logger.info(f"Max decode block {max(blocks_step,
+                    self.max_num_seqs * max_decode_seq // self.block_size)}")
 
         msg = ("Prompt bucket config (min, step, max_warmup) "
                f"bs:{self.prompt_bs_bucket_cfg}, "
