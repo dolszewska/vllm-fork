@@ -52,6 +52,8 @@ if TYPE_CHECKING:
 logger = init_logger(__name__)
 
 _TYPE_CACHE = {}
+# These values are assumed to be zero in several places.
+# Use caution when updating them!
 _PAD_SLOT_ID = 0
 _PAD_BLOCK_ID = 0
 
@@ -937,13 +939,13 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         input_positions = torch.tensor(input_positions,
                                        dtype=torch.long,
                                        device=self.device)
-        
+
         dummy_slots = itertools.cycle(
             range(_PAD_SLOT_ID, _PAD_SLOT_ID + self.block_size))
         slot_mapping = [[
             s if s != _PAD_SLOT_ID else next(dummy_slots) for s in sl
         ] for sl in slot_mapping]
-      
+
         num_decode_tokens = sum(seq_lens)
 
         blocks_used = [len(bt) for bt in block_tables]
