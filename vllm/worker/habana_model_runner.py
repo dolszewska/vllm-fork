@@ -3,7 +3,9 @@
 ###############################################################################
 
 import collections
+import contextlib
 import dataclasses
+import functools
 import gc
 import itertools
 import math
@@ -15,6 +17,7 @@ from typing import (TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple,
                     Optional, Set, Tuple, Type, TypeVar, Union)
 
 import habana_frameworks.torch as htorch
+import habana_frameworks.torch.internal.bridge_config as bc
 import torch
 
 from vllm.attention import AttentionMetadata, get_attn_backend
@@ -50,6 +53,8 @@ logger = init_logger(__name__)
 
 _TYPE_CACHE = {}
 _PAD_SLOT_ID = 0
+_PAD_BLOCK_ID = 0
+
 LORA_WARMUP_RANK = 8
 
 
@@ -932,6 +937,13 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         input_positions = torch.tensor(input_positions,
                                        dtype=torch.long,
                                        device=self.device)
+        
+        dummy_slots = itertools.cycle(
+            range(_PAD_SLOT_ID, _PAD_SLOT_ID + self.block_size))
+        slot_mapping = [[
+            s if s != _PAD_SLOT_ID else next(dummy_slots) for s in sl
+        ] for sl in slot_mapping]
+      
         num_decode_tokens = sum(seq_lens)
 
         blocks_used = [len(bt) for bt in block_tables]
@@ -1206,7 +1218,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         else:
             input_len = seq_len - 1
             output_len = 1
-            block_tables = {group_id: [0] * num_blocks}
+            block_tables = {group_id: [_PAD_BLOCK_ID] * num_blocks}
         prompt_token_ids = [0] * input_len
         output_token_ids = [1] * output_len
         seq_data = SequenceData(prompt_token_ids)
@@ -1455,67 +1467,87 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
 
         start_mem = HabanaMemoryProfiler.current_device_memory_usage()
         start_time = time.perf_counter()
-        self.warmup_all_buckets(self.prompt_buckets, True, kv_caches)
-        self.warmup_all_buckets(self.decode_buckets, False, kv_caches)
 
-        if not self.enforce_eager and htorch.utils.internal.is_lazy():
-            assert self.mem_margin is not None, \
-                ("HabanaWorker.determine_num_available_blocks needs "
-                "to be called before warming up the model.")
-            free_mem = HabanaMemoryProfiler.current_free_device_memory()
-            graph_free_mem = free_mem - self.mem_margin
-            graph_free_mem = align_workers(graph_free_mem,
-                                           torch.distributed.ReduceOp.MIN)
-            prompt_graph_mem_ratio = float(
-                os.environ.get('VLLM_GRAPH_PROMPT_RATIO', '0.5'))
-            prompt_available_memory = prompt_graph_mem_ratio * graph_free_mem
-            decode_available_memory = graph_free_mem - prompt_available_memory
-            msg = (f"Using {format_bytes(graph_free_mem)}"
-                   f"/{format_bytes(free_mem)} "
-                   "of free device memory for HPUGraphs, "
-                   f"{format_bytes(prompt_available_memory)} for prompt and "
-                   f"{format_bytes(decode_available_memory)} for decode "
-                   f"(VLLM_GRAPH_PROMPT_RATIO={prompt_graph_mem_ratio})")
-            logger.info(msg)
-            prompt_strategy = os.environ.get('VLLM_GRAPH_PROMPT_STRATEGY',
-                                             'min_tokens')
-            decode_strategy = os.environ.get('VLLM_GRAPH_DECODE_STRATEGY',
-                                             'max_bs')
-            mem_post_prompt, prompt_batch_seq, prompt_captured_all = \
-                self.warmup_graphs(
-                prompt_strategy, self.prompt_buckets, True, kv_caches,
-                prompt_available_memory)
-            mem_post_decode, decode_batch_seq, decode_captured_all = \
-                self.warmup_graphs(
-                decode_strategy, self.decode_buckets, False, kv_caches,
-                decode_available_memory)
+        compile_only_mode_context = functools.partial(bc.env_setting,
+                                                      "PT_COMPILE_ONLY_MODE",
+                                                      True)
+        can_use_compile_only_mode = True
+        try:
+            with compile_only_mode_context():
+                pass
+            logger.debug("Using PT_COMPILE_ONLY_MODE.")
+        except KeyError:
+            can_use_compile_only_mode = False
+            logger.warning('Cannot use PT_COMPILE_ONLY_MODE. '
+                           'Warmup time will be negatively impacted. '
+                           'Please update Gaudi Software Suite.')
+        with compile_only_mode_context(
+        ) if can_use_compile_only_mode else contextlib.nullcontext():
+            self.warmup_all_buckets(self.prompt_buckets, True, kv_caches)
+            self.warmup_all_buckets(self.decode_buckets, False, kv_caches)
 
-            # Not all prompt buckets were captured, but all decode buckets were
-            # captured and we have some free graph-allocated space left.
-            # Let's try to use it for capturing more prompt buckets.
-            if mem_post_decode + mem_post_prompt < graph_free_mem \
-                and not prompt_captured_all \
-                    and decode_captured_all:
-                mem_post_prompt, _, prompt_captured_all = self.warmup_graphs(
+            if not self.enforce_eager and htorch.utils.internal.is_lazy():
+                assert self.mem_margin is not None, \
+                    ("HabanaWorker.determine_num_available_blocks needs "
+                    "to be called before warming up the model.")
+                free_mem = HabanaMemoryProfiler.current_free_device_memory()
+                graph_free_mem = free_mem - self.mem_margin
+                graph_free_mem = align_workers(graph_free_mem,
+                                               torch.distributed.ReduceOp.MIN)
+                prompt_graph_mem_ratio = float(
+                    os.environ.get('VLLM_GRAPH_PROMPT_RATIO', '0.5'))
+                prompt_available_memory = (prompt_graph_mem_ratio *
+                                           graph_free_mem)
+                decode_available_memory = (graph_free_mem -
+                                           prompt_available_memory)
+                msg = (
+                    f"Using {format_bytes(graph_free_mem)}"
+                    f"/{format_bytes(free_mem)} "
+                    "of free device memory for HPUGraphs, "
+                    f"{format_bytes(prompt_available_memory)} for prompt and "
+                    f"{format_bytes(decode_available_memory)} for decode "
+                    f"(VLLM_GRAPH_PROMPT_RATIO={prompt_graph_mem_ratio})")
+                logger.info(msg)
+                prompt_strategy = os.environ.get('VLLM_GRAPH_PROMPT_STRATEGY',
+                                                 'min_tokens')
+                decode_strategy = os.environ.get('VLLM_GRAPH_DECODE_STRATEGY',
+                                                 'max_bs')
+                mem_post_prompt, prompt_batch_seq, prompt_captured_all = \
+                    self.warmup_graphs(
                     prompt_strategy, self.prompt_buckets, True, kv_caches,
-                    graph_free_mem - mem_post_prompt - mem_post_decode,
-                    mem_post_prompt, prompt_batch_seq)
-
-            # Not all decode buckets were captured, but all prompt buckets were
-            # captured and we have some free graph-allocated space left.
-            # Let's try to use it for capturing more decode buckets.
-            if mem_post_decode + mem_post_prompt < graph_free_mem \
-                and not decode_captured_all \
-                    and prompt_captured_all:
-                mem_post_decode, _, _ = self.warmup_graphs(
+                    prompt_available_memory)
+                mem_post_decode, decode_batch_seq, decode_captured_all = \
+                    self.warmup_graphs(
                     decode_strategy, self.decode_buckets, False, kv_caches,
-                    graph_free_mem - mem_post_prompt - mem_post_decode,
-                    mem_post_decode, decode_batch_seq)
+                    decode_available_memory)
 
-            self.log_graph_warmup_summary(self.prompt_buckets, True,
-                                          mem_post_prompt)
-            self.log_graph_warmup_summary(self.decode_buckets, False,
-                                          mem_post_decode)
+                # Not all prompt buckets were captured, but all decode buckets
+                # were captured and we have some free graph-allocated space
+                # left. Let's try to use it for capturing more prompt buckets.
+                if (mem_post_decode + mem_post_prompt < graph_free_mem
+                        and not prompt_captured_all and decode_captured_all):
+                    mem_post_prompt, _, prompt_captured_all = (
+                        self.warmup_graphs(
+                            prompt_strategy, self.prompt_buckets, True,
+                            kv_caches,
+                            graph_free_mem - mem_post_prompt - mem_post_decode,
+                            mem_post_prompt, prompt_batch_seq))
+
+                # Not all decode buckets were captured, but all prompt buckets
+                # were captured and we have some free graph-allocated space
+                # left. Let's try to use it for capturing more decode buckets.
+                if mem_post_decode + mem_post_prompt < graph_free_mem \
+                    and not decode_captured_all \
+                        and prompt_captured_all:
+                    mem_post_decode, _, _ = self.warmup_graphs(
+                        decode_strategy, self.decode_buckets, False, kv_caches,
+                        graph_free_mem - mem_post_prompt - mem_post_decode,
+                        mem_post_decode, decode_batch_seq)
+
+                self.log_graph_warmup_summary(self.prompt_buckets, True,
+                                              mem_post_prompt)
+                self.log_graph_warmup_summary(self.decode_buckets, False,
+                                              mem_post_decode)
 
         end_time = time.perf_counter()
         end_mem = HabanaMemoryProfiler.current_device_memory_usage()
@@ -1750,10 +1782,7 @@ class HabanaModelRunner(
         if multi_modal_input is not None:
             execute_model_kwargs.update(multi_modal_input)
         if htorch.utils.internal.is_lazy():
-            execute_model_kwargs.update({
-                "bypass_hpu_graphs": not use_graphs,
-                "warmup_mode": warmup_mode
-            })
+            execute_model_kwargs.update({"bypass_hpu_graphs": not use_graphs})
 
         htorch.core.mark_step()
         if self.is_driver_worker:
