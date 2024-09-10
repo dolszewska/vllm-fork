@@ -1236,9 +1236,8 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         num_layers = self.model_config.get_num_layers(self.parallel_config)
         kv_caches = [None] * num_layers
         max_batch_size = self.prompt_bs_bucket_cfg[-1]
-        max_seq_len = self.prompt_seq_bucket_cfg[-1]
-        if self.lora_config:
-            max_seq_len = self.max_num_batched_tokens // max_batch_size
+        max_seq_len = min(self.prompt_seq_bucket_cfg[-1],
+                          self.max_num_batched_tokens // max_batch_size)
 
         self.warmup_scenario(max_batch_size,
                              max_seq_len,
