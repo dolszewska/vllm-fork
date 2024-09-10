@@ -1354,9 +1354,12 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
     def log_warmup(self, phase, i, max_i, batch_size, seq_len):
         free_mem = format_bytes(
             HabanaMemoryProfiler.current_free_device_memory())
+        dim = "num_blocks"
+        if phase == "Prompt":
+            dim = "seq_len"
         msg = (f"[Warmup][{phase}][{i+1}/{max_i}] "
                f"batch_size:{batch_size} "
-               f"seq_len:{seq_len} "
+               f"{dim}:{seq_len} "
                f"free_mem:{free_mem}")
         logger.info(msg)
 
