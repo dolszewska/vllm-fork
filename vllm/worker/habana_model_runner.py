@@ -1826,6 +1826,8 @@ class HabanaModelRunner(
         input_hash=htorch.hpu.graphs.input_hash(execute_model_kwargs)
         input_hash_input_ids=htorch.hpu.graphs.input_hash(input_tokens)
         input_view_hash_input_ids=_hpu_C.get_view_hash(input_tokens)
+        free_mem = format_bytes(
+            HabanaMemoryProfiler.current_free_device_memory())
 
         print(f"Warmup mode: {warmup_mode}, Is prompt: {is_prompt}, Free memory: {free_mem}, Input hash: {input_hash}, Input tokens view hash: {input_view_hash_input_ids}, Input ids: {input_hash_input_ids}, Batch size: {batch_size}, Seq length: {seq_len}\n")
         if self.is_driver_worker:
